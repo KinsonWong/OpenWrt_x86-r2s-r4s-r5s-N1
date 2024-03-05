@@ -20,7 +20,7 @@
 +  SOC := rk3568
 +  UBOOT_DEVICE_NAME := nlnet-xgp-rk3568
 +  IMAGE/sysupgrade.img.gz := boot-combined | boot-script nlnet-xgp | pine64-img | gzip | append-metadata
-+  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-mt7921e wpad-openssl
++  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-mt7921e wpad-basic-wolfssl
 +  DEVICE_DTS = rockchip/rk3568-xgp rockchip/rk3568-xgp-v3
 +endef
 +TARGET_DEVICES += nlnet_xgp
@@ -49,7 +49,7 @@
    SOC := rk3328
    UBOOT_DEVICE_NAME := nanopi-r2s-rk3328
    IMAGE/sysupgrade.img.gz := boot-common | boot-script nanopi-r2s | pine64-bin | gzip | append-metadata
-@@ -141,6 +162,38 @@ define Device/friendlyarm_nanopi-r5s
+@@ -141,6 +162,22 @@ define Device/friendlyarm_nanopi-r5s
  endef
  TARGET_DEVICES += friendlyarm_nanopi-r5s
  
@@ -69,22 +69,6 @@
 +endef
 +TARGET_DEVICES += friendlyarm_nanopi-neo4
 +
-+define Device/friendlyarm_nanopc-t4
-+  DEVICE_VENDOR := FriendlyARM
-+  DEVICE_MODEL := NanoPC T4
-+  SOC := rk3328
-+  DEVICE_DTS = rockchip/rk3328-nanopi-r2s
-+endef
-+TARGET_DEVICES += friendlyarm_nanopc-t4
-+
-+define Device/friendlyarm_nanopc-t6
-+  DEVICE_VENDOR := FriendlyARM
-+  DEVICE_MODEL := NanoPC T6
-+  SOC := rk3328
-+  DEVICE_DTS = rockchip/rk3328-nanopi-r2s
-+endef
-+TARGET_DEVICES += friendlyarm_nanopc-t6
-+
  define Device/firefly_station-p2
    DEVICE_VENDOR := Firefly
    DEVICE_MODEL := Station P2
@@ -92,15 +76,10 @@
 --- a/target/linux/rockchip/armv8/base-files/etc/board.d/02_network
 +++ b/target/linux/rockchip/armv8/base-files/etc/board.d/02_network
 @@ -23,8 +23,15 @@
- 	sharevdi,h3399pc|\
- 	sharevdi,guangmiao-g4c|\
  	xunlong,orangepi-r1-plus|\
--	xunlong,orangepi-r1-plus-lts)
-+	xunlong,orangepi-r1-plus-lts|\
-+	friendlyarm,nanopc-t6)
+ 	xunlong,orangepi-r1-plus-lts)
  		ucidef_set_interfaces_lan_wan 'eth1' 'eth0'
 +		;;
-+	friendlyarm,nanopc-t4 | \
 +	friendlyarm,nanopi-m4 | \
 +	friendlyarm,nanopi-neo4 | \
 +	som-rk3399 | cm3588)
@@ -108,59 +87,6 @@
  		;;
  	fastrhino,r66s|\
  	firefly,rk3568-roc-pc|\
-@@ -48,10 +56,10 @@
- 	esac
- }
- 
--nanopi_r4s_get_mac()
-+nanopi_get_mac()
- {
- 	local interface=$1
--	local eeprom_path="/sys/bus/i2c/devices/2-0051/eeprom"
-+	local eeprom_path="/sys/bus/i2c/devices/$2/eeprom"
- 	local address
- 
- 	if [ -f "$eeprom_path" ]; then
-@@ -98,8 +106,12 @@
- 		;;
- 	friendlyarm,nanopi-r4s|\
- 	friendlyarm,nanopi-r4se)
--		wan_mac=$(nanopi_r4s_get_mac wan)
--		lan_mac=$(nanopi_r4s_get_mac lan)
-+		wan_mac=$(nanopi_get_mac wan 2-0051)
-+		lan_mac=$(nanopi_get_mac lan 2-0051)
-+		;;
-+	nanopi-r6s|nanopi-r6c|nanopc-t6)
-+		wan_mac=$(nanopi_get_mac wan 6-0053)
-+		lan_mac=$(nanopi_get_mac lan 6-0053)
- 		;;
- 	friendlyarm,nanopi-r2c-plus|\
- 	friendlyarm,nanopi-r5c|\
- 
--nanopi_r4s_get_mac()
-+nanopi_get_mac()
- {
- 	local interface=$1
--	local eeprom_path="/sys/bus/i2c/devices/2-0051/eeprom"
-+	local eeprom_path="/sys/bus/i2c/devices/$2/eeprom"
- 	local address
- 
- 	if [ -f "$eeprom_path" ]; then
-@@ -94,8 +99,12 @@ rockchip_setup_macs()
- 		;;
- 	friendlyarm,nanopi-r4s|\
- 	friendlyarm,nanopi-r4se)
--		wan_mac=$(nanopi_r4s_get_mac wan)
--		lan_mac=$(nanopi_r4s_get_mac lan)
-+		wan_mac=$(nanopi_get_mac wan 2-0051)
-+		lan_mac=$(nanopi_get_mac lan 2-0051)
-+		;;
-+	friendlyarm,nanopi-r6s|friendlyarm,nanopi-r6c|friendlyarm,nanopc-t6)
-+		wan_mac=$(nanopi_get_mac wan 6-0053)
-+		lan_mac=$(nanopi_get_mac lan 6-0053)
- 		;;
- 	friendlyarm,nanopi-r5c|\
- 	friendlyarm,nanopi-r5s|\
 
 --- a/target/linux/rockchip/armv8/base-files/etc/board.d/01_leds
 +++ b/target/linux/rockchip/armv8/base-files/etc/board.d/01_leds
@@ -212,20 +138,12 @@
 
 --- a/target/linux/rockchip/image/Makefile
 +++ b/target/linux/rockchip/image/Makefile
-@@ -79,4 +79,23 @@ endif
+@@ -79,4 +79,15 @@ endif
  
  include $(SUBTARGET).mk
  
 +define Image/Build
-+	if [[ "$(PROFILE_SANITIZED)" == "friendlyarm_nanopc-t6" ]]; then \
-+		export IMG_PREFIX="$(IMG_PREFIX)$(if $(PROFILE_SANITIZED),-$(PROFILE_SANITIZED))"; \
-+		export BIN_DIR=$(BIN_DIR); \
-+		export TOPDIR=$(TOPDIR); \
-+		export MORE=$(MORE); \
-+		cd /data/packit/friendlywrt23-rk3588; \
-+		. ~/packit/packit_nanopi.sh; \
-+	fi
-+	if [[ "$(PROFILE_SANITIZED)" == "friendlyarm_nanopi-m4" || "$(PROFILE_SANITIZED)" == "friendlyarm_nanopc-t4" || "$(PROFILE_SANITIZED)" == "friendlyarm_nanopi-neo4" ]]; then \
++	if [[ "$(PROFILE_SANITIZED)" == "friendlyarm_nanopi-m4" || "$(PROFILE_SANITIZED)" == "friendlyarm_nanopi-neo4" ]]; then \
 +		export IMG_PREFIX="$(IMG_PREFIX)$(if $(PROFILE_SANITIZED),-$(PROFILE_SANITIZED))"; \
 +		export BIN_DIR=$(BIN_DIR); \
 +		export TOPDIR=$(TOPDIR); \
